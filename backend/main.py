@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
 import uvicorn
+from _datetime import datetime
 
 from . import models, schemas
 from .database import SessionLocal, engine
@@ -163,16 +164,7 @@ def get_users(db: Session = Depends(get_db)):
     return db.query(models.UserDB).all()
 
 
-@app.delete("/admin/devices/{mac}")
-def delete_device(mac: str, db: Session = Depends(get_db)):
-    device = db.query(models.DeviceDB).filter(models.DeviceDB.mac_address == mac).first()
-    if not device:
-        raise HTTPException(status_code=404, detail="Not found")
 
-    db.query(models.MeasurementDB).filter(models.MeasurementDB.device_id == device.id).delete()
-    db.delete(device)
-    db.commit()
-    return {"status": "Deleted"}
 
 
 import json
@@ -195,27 +187,62 @@ def export_data(db: Session = Depends(get_db)):
 
 @app.post("/admin/import")
 def import_data(data: dict, db: Session = Depends(get_db)):
-    # Приклад для користувачів (можна розширити на всі таблиці)
+    # 1. Імпорт Користувачів
     if "users" in data:
         for u in data["users"]:
             existing = db.query(models.UserDB).filter(models.UserDB.email == u["email"]).first()
             if not existing:
-                new_user = models.UserDB(email=u["email"], username=u["username"])
+                new_user = models.UserDB(username=u["username"], email=u["email"])
                 db.add(new_user)
-    db.commit()
-    return {"status": "imported"}
+        db.commit()
 
+    # 2. Імпорт Пристроїв
+    if "devices" in data:
+        for d in data["devices"]:
+            # Перевіряємо обидва варіанти ключа: 'mac' або 'mac_address'
+            mac = d.get("mac") or d.get("mac_address")
+            if not mac: continue
+
+            existing_dev = db.query(models.DeviceDB).filter(models.DeviceDB.mac_address == mac).first()
+            if not existing_dev:
+                new_device = models.DeviceDB(mac_address=mac, user_id=d["user_id"])
+                db.add(new_device)
+        db.commit()
+
+    # 3. Імпорт Замірів
+    if "measurements" in data:
+        from datetime import datetime  # Локальний імпорт про всяк випадок
+        for m in data["measurements"]:
+            ts = m["timestamp"]
+            # Перетворюємо рядок на об'єкт datetime
+            if isinstance(ts, str):
+                try:
+                    ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                except:
+                    ts = datetime.utcnow()
+
+            new_m = models.MeasurementDB(
+                temperature=m["temperature"],
+                humidity=m["humidity"],
+                co2=m["co2"],
+                pm25=m["pm25"],
+                voc=m.get("voc", 0),
+                device_id=m["device_id"],
+                timestamp=ts
+            )
+            db.add(new_m)
+        db.commit()
+
+    return {"status": "success"}
 
 @app.get("/admin/devices/all")
 def get_all_devices(db: Session = Depends(get_db)):
     return db.query(models.DeviceDB).all()
 
-# Отримання останніх 50 замірів
 @app.get("/admin/measurements/all")
 def get_all_measurements(db: Session = Depends(get_db)):
     return db.query(models.MeasurementDB).order_by(models.MeasurementDB.timestamp.desc()).limit(50).all()
 
-# Видалення користувача
 @app.delete("/admin/users/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(models.UserDB).filter(models.UserDB.id == user_id).first()
@@ -225,7 +252,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success"}
 
-# Видалення заміру
 @app.delete("/admin/measurements/{m_id}")
 def delete_measurement(m_id: int, db: Session = Depends(get_db)):
     measure = db.query(models.MeasurementDB).filter(models.MeasurementDB.id == m_id).first()
@@ -237,17 +263,16 @@ def delete_measurement(m_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/admin/devices/{id}")
 def delete_device(id: int, db: Session = Depends(get_db)):
+    print(f"DEBUG: Намагаємось видалити девайс з ID: {id}")
+
     db.query(models.MeasurementDB).filter(models.MeasurementDB.device_id == id).delete()
 
-    device = db.query(models.DeviceDB).filter(models.DeviceDB.id == id).first()
-    if device:
-        db.delete(device)
-        db.commit()
-        return {"ok": True}
+    result = db.query(models.DeviceDB).filter(models.DeviceDB.id == id).delete()
+    db.commit()
 
-    db.rollback()
-    raise HTTPException(status_code=404, detail="Device not found")
-
+    if result == 0:
+        return {"error": "Not found in DB"}
+    return {"ok": True}
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(

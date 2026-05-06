@@ -24,7 +24,7 @@ class DeviceDB(Base):
 class MeasurementDB(Base):
     __tablename__ = "measurements"
     id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(Integer, ForeignKey("devices.id"))
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"))
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 

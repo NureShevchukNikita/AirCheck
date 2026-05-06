@@ -130,14 +130,12 @@ function App() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', alignItems: 'center' }}>
-              {/* Кнопка Імпорту */}
               <label style={{ ...backupBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', height: '42px', padding: '0 20px', margin: 0, boxSizing: 'border-box' }}>
                 <Upload size={18} />
                 <span style={{ fontSize: '14px', fontWeight: 'bold', lineHeight: '1' }}>{t('import_btn')}</span>
                 <input type="file" onChange={handleImport} style={{ display: 'none' }} accept=".json" />
               </label>
 
-              {/* Кнопка Експорту */}
               <button onClick={downloadBackup} style={{ ...backupBtn, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', height: '42px', padding: '0 20px', margin: 0, boxSizing: 'border-box' }}>
                 <Download size={18} />
                 <span style={{ fontSize: '14px', fontWeight: 'bold', lineHeight: '1' }}>{t('export_btn')}</span>
@@ -154,7 +152,7 @@ function App() {
             />
 
             <AdminTable
-              title={t('devices_table')} // Перекладено
+              title={t('devices_table')}
               icon={<Cpu size={20}/>}
               data={devices}
               columns={['id', 'mac_address', 'user_id']}
@@ -163,7 +161,7 @@ function App() {
             />
 
             <AdminTable
-              title={t('measurements_table')} // Перекладено
+              title={t('measurements_table')}
               icon={<Database size={20}/>}
               data={measurements}
               columns={['id', 'temperature', 'humidity', 'co2', 'pm25', 'voc', 'device_id', 'timestamp']}
@@ -177,35 +175,86 @@ function App() {
   );
 }
 
-const AdminTable = ({ title, icon, data, columns, onDelete, formatDate }) => (
-  <div style={cardStyle}>
-    <h3 style={{ color: '#00d1b2', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>{icon} {title}</h3>
-    <div style={{ overflowX: 'auto' }}>
-      <table style={tableStyle}>
-        <thead>
-          <tr style={{ backgroundColor: '#00d1b2', color: '#000' }}>
-            {columns.map(col => <th key={col} style={thStyle}>{col.toUpperCase()}</th>)}
-            <th style={thStyle}>ACTION</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map(item => (
-            <tr key={item.id || item.mac_address} style={{ borderBottom: '1px solid #333' }}>
+const AdminTable = ({ title, icon, data, columns, onDelete, formatDate }) => {
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  // Логіка сортування
+  const sortedData = React.useMemo(() => {
+    let sortableItems = [...data];
+    if (sortConfig.key !== null) {
+      sortableItems.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+
+        // Перевірка на числа
+        if (!isNaN(aValue) && !isNaN(bValue)) {
+          return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+        }
+
+        // Перевірка на текст (з урахуванням мови)
+        const strA = String(aValue || '');
+        const strB = String(bValue || '');
+        return sortConfig.direction === 'asc'
+          ? strA.localeCompare(strB)
+          : strB.localeCompare(strA);
+      });
+    }
+    return sortableItems;
+  }, [data, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  return (
+    <div style={cardStyle}>
+      <h3 style={{ color: '#00d1b2', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {icon} {title}
+      </h3>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={tableStyle}>
+          <thead>
+            <tr style={{ backgroundColor: '#00d1b2', color: '#000' }}>
               {columns.map(col => (
-                <td key={col} style={tdStyle}>
-                  {col === 'timestamp' ? formatDate(item[col]) : item[col]}
-                </td>
+                <th
+                  key={col}
+                  onClick={() => requestSort(col)}
+                  style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }}
+                >
+                  {col.toUpperCase()} {sortConfig.key === col ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </th>
               ))}
-              <td style={tdStyle}>
-                <button onClick={() => onDelete(item.id || item.mac_address)} style={{ color: '#ff4d4d', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}><Trash2 size={18}/></button>
-              </td>
+              <th style={thStyle}>ACTION</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sortedData.map((item, idx) => (
+              <tr key={item.id || item.mac_address || idx} style={{ borderBottom: '1px solid #333' }}>
+                {columns.map(col => (
+                  <td key={col} style={tdStyle}>
+                    {col === 'timestamp' ? formatDate(item[col]) : item[col]}
+                  </td>
+                ))}
+                <td style={tdStyle}>
+                  <button
+                    onClick={() => onDelete(item.id || item.mac_address)}
+                    style={{ color: '#ff4d4d', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <Trash2 size={18}/>
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const StatCard = ({ icon, label, value }) => (
   <div style={{ ...cardStyle, textAlign: 'center' }}>
