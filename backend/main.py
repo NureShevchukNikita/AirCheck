@@ -42,7 +42,6 @@ def analyze_air_quality(temp: float, hum: float, co2: int, pm25: int, voc: int) 
         recommendations.append("rec_humid")
         status_levels.append(1)
 
-    # Аналіз CO2
     if co2 > 1200:
         recommendations.append("rec_co2_crit")
         status_levels.append(2)
@@ -50,7 +49,6 @@ def analyze_air_quality(temp: float, hum: float, co2: int, pm25: int, voc: int) 
         recommendations.append("rec_co2_high")
         status_levels.append(1)
 
-    # Аналіз пилу (PM2.5)
     if pm25 > 50:
         recommendations.append("rec_dust_crit")
         status_levels.append(2)
@@ -58,7 +56,6 @@ def analyze_air_quality(temp: float, hum: float, co2: int, pm25: int, voc: int) 
         recommendations.append("rec_dust_high")
         status_levels.append(1)
 
-    # Аналіз летючих органічних сполук (VOC)
     if voc > 500:
         recommendations.append("rec_voc")
         status_levels.append(2)
@@ -75,9 +72,9 @@ def analyze_air_quality(temp: float, hum: float, co2: int, pm25: int, voc: int) 
         recommendations.append("rec_ok")
 
     return {
-        "status": final_status,  # Це ключ для t('Excellent'), t('Warning') тощо
-        "summary": "real_time",   # Це ключ для t('real_time')
-        "recommendations": recommendations  # Список ключів: ["rec_cold", "rec_co2_high"]
+        "status": final_status,
+        "summary": "real_time",
+        "recommendations": recommendations
     }
 
 
@@ -126,7 +123,6 @@ def get_analysis(mac: str, db: Session = Depends(get_db)):
             "status": "No Data", "summary": "Waiting for data", "recommendations": []
         }
 
-    # Використовуємо логіку аналізу для поточних даних
     logic = analyze_air_quality(
         temp=latest.temperature,
         hum=latest.humidity,
@@ -187,7 +183,6 @@ def export_data(db: Session = Depends(get_db)):
 
 @app.post("/admin/import")
 def import_data(data: dict, db: Session = Depends(get_db)):
-    # 1. Імпорт Користувачів
     if "users" in data:
         for u in data["users"]:
             existing = db.query(models.UserDB).filter(models.UserDB.email == u["email"]).first()
@@ -196,10 +191,8 @@ def import_data(data: dict, db: Session = Depends(get_db)):
                 db.add(new_user)
         db.commit()
 
-    # 2. Імпорт Пристроїв
     if "devices" in data:
         for d in data["devices"]:
-            # Перевіряємо обидва варіанти ключа: 'mac' або 'mac_address'
             mac = d.get("mac") or d.get("mac_address")
             if not mac: continue
 
@@ -209,12 +202,10 @@ def import_data(data: dict, db: Session = Depends(get_db)):
                 db.add(new_device)
         db.commit()
 
-    # 3. Імпорт Замірів
     if "measurements" in data:
-        from datetime import datetime  # Локальний імпорт про всяк випадок
+        from datetime import datetime
         for m in data["measurements"]:
             ts = m["timestamp"]
-            # Перетворюємо рядок на об'єкт datetime
             if isinstance(ts, str):
                 try:
                     ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -273,6 +264,32 @@ def delete_device(id: int, db: Session = Depends(get_db)):
     if result == 0:
         return {"error": "Not found in DB"}
     return {"ok": True}
+
+@app.put("/admin/users/{user_id}")
+def update_user(user_id: int, user_data: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(models.UserDB).filter(models.UserDB.id == user_id).first()
+    if not db_user: raise HTTPException(status_code=404)
+    db_user.username = user_data.username
+    db_user.email = user_data.email
+    db.commit()
+    return {"status": "updated"}
+
+@app.post("/admin/devices")
+def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
+    new_device = models.DeviceDB(**device.dict())
+    db.add(new_device)
+    db.commit()
+    return {"status": "created"}
+
+@app.put("/admin/devices/{device_id}")
+def update_device(device_id: int, device_data: schemas.DeviceCreate, db: Session = Depends(get_db)):
+    db_device = db.query(models.DeviceDB).filter(models.DeviceDB.id == device_id).first()
+    if not db_device: raise HTTPException(status_code=404)
+    db_device.mac_address = device_data.mac_address
+    db_device.user_id = device_data.user_id
+    db.commit()
+    return {"status": "updated"}
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(

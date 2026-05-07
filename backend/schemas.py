@@ -24,6 +24,8 @@ class MeasurementResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+
 class DeviceResponse(BaseModel):
     id: int
     mac_address: str
@@ -55,3 +57,7 @@ class AirQualityAnalysis(BaseModel):
     status: str
     summary: str
     recommendations: List[str]
+
+class DeviceCreate(BaseModel):
+    mac_address: str
+    user_id: int
