@@ -5,7 +5,10 @@ from sqlalchemy.engine import Engine
 SQLALCHEMY_DATABASE_URL = "sqlite:///./aircheck_lab3.db"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False},
+    pool_size=50,
+    max_overflow=100,
+    pool_timeout=10
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
